@@ -1,0 +1,478 @@
+---
+title: "What is the Most Important Factor that affects Diabetes? - Neural Network Approach"
+output: html_notebook
+---
+
+# 0. Load library
+Load all required library within our coding and explain what its function.
+        
+```{r}
+set.seed(0) # to lock the data
+library(gplots) #to visualize correlation through heatmap
+library(psych) #to find kurtosis and skewness value
+library(caTools) #to split sample data
+library(neuralnet) #to neural network machine learning
+library(caret) # to calculate accuracy
+library(e1071) # required by caret library
+```
+
+# 1. Extract, Transform, Load (ETL)
+## 1.1. Load data
+
+Load the data frame called "Prediksi Diabetes.csv" through [this link](https://docs.google.com/spreadsheets/d/e/2PACX-1vSiFblgLdNoUumGPmBQLfW38gzqSxl8GIYqKe1IIjjyePQf0pdehYi59XY7jM4qJNuOOQrUBQ40vVZ1/pub?gid=849103461&single=true&output=csv). Then print it with _head_ function to take a glance of what the data looks like.
+
+```{r Load Data}
+df <- read.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vSiFblgLdNoUumGPmBQLfW38gzqSxl8GIYqKe1IIjjyePQf0pdehYi59XY7jM4qJNuOOQrUBQ40vVZ1/pub?gid=849103461&single=true&output=csv")
+dfcor <- read.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vSiFblgLdNoUumGPmBQLfW38gzqSxl8GIYqKe1IIjjyePQf0pdehYi59XY7jM4qJNuOOQrUBQ40vVZ1/pub?gid=849103461&single=true&output=csv")
+print(head(df))
+```
+
+## 1.2. Data Dictionary - feature, target, independent
+The detailed description of the entire available features in tabular format. I use [this service](https://www.tablesgenerator.com/markdown_tables) to help me to visualize it.
+
+| No |    Field Name    | Data Type |                                             Description                                             | Classification | Processed |
+|:--:|:----------------:|:---------:|:---------------------------------------------------------------------------------------------------:|:--------------:|:---------:|
+|  1 |  GlukosaSewaktu  |  Integer  |                                  The level of blood sugar in mg/dL                                  |   Independent  |    Yes    |
+|  2 | TekananDarahAtas |  Integer  |                            The value of diastolic blood pressure in mm Hg                           |   Independent  |    Yes    |
+|  3 |  KetebalanKulit  |  Integer  |                                   The value of skin density in mm                                   |   Independent  |    Yes    |
+|  4 |      Insulin     |  Integer  |                                      The value of insulin level                                     |   Independent  |    Yes    |
+|  5 |        BMI       |   Double  |        The value of Body Mass Index, the measure of body fat that based on height and weight        |   Independent  |    Yes    |
+|  6 |   FaktorRisiko   |   Double  |                   The likelihood of diabetes based on family history in percentage                  |   Independent  |    Yes    |
+|  7 |       Umur       |  Integer  |                                    The value of age in years old                                    |   Independent  |    Yes    |
+|  8 |     Diabetes     | Factorial | The classification of whether a person is diagnosed with diabetes or not. 1 = Diabetes 0 = Healthy |     Target     |    Yes    |
+
+The total of actual data: **768 observations**
+
+
+# 2. Feature engineering
+## 2.1. Feature engineering
+### 2.1.1. Remove features that not needed
+
+_Inessential_
+
+### 2.1.2. Add features if needed
+
+_Inessential_
+
+## 2.2. Check if there are NULL value
+
+This phase evaluates if there is any _empty data_ that could possibly ruin the research process.
+
+```{r To check if there is Not Available value}
+colSums(is.na(df))
+```
+
+
+Since there is no NA value within our data. I reevaluate the nature of the data and i figure out that:
+
+1. In this case by considering the nature of the data object, some of the value from certain features are shown as 0 which is not feasible in medical sense.
+
+2. I assume the NA value in this data format is **not represented by "NA" but "0" value.**
+
+```{r To check if there is no 0 value}
+colSums(df == 0, )
+```
+
+We ignore _Diabetes_ variable since its 0 value represents *Healthy* patient.
+
+Conclusion: **There are NULL values in several features, hence I must proceed with the data imputing process to solve the issue**
+
+### 2.2.1 Imputing process (if there's NULL)
+
+In order to choose the appropriate imputing process, I need to **check whether outliers** are exist or not within the data. Creating a boxplot would help me to find the outliers.
+
+```{r}
+boxplot(df)
+```
+
+Based on the boxplot shown above, we can identify there are _outliers_ that represented by _circles_ within the visualization. Hence, I must proceed with **replacing each of the 0 values with median value** of each feature. First by calculating the median value.
+
+```{r}
+median.glucose <- median(df$GlukosaSewaktu)
+median.blood <- median(df$TekananDarahAtas)
+median.skin <- median(df$KetebalanKulit)
+median.insulin <- median(df$Insulin)
+median.bmi <- median(df$BMI)
+
+print(paste("Median GlukosaSewaktu =", median.glucose))
+print(paste("Median TekananDarahAtas =", median.blood))
+print(paste("Median KetebelanKulit =", median.skin))
+print(paste("Median Insulin =", median.insulin))
+print(paste("Median BMI =", median.bmi))
+```
+
+After I found the median value for each required feature, I continue to **insert the median amount into each of the feature**, replacing the previously-empty data.
+
+```{r}
+df[df$GlukosaSewaktu == 0, "GlukosaSewaktu"] <- median.glucose
+df[df$TekananDarahAtas == 0, "TekananDarahAtas"] <- median.blood
+df[df$KetebalanKulit == 0, "KetebalanKulit"] <- median.skin
+df[df$Insulin == 0, "Insulin"] <- median.insulin
+df[df$BMI == 0, "BMI"] <- median.bmi
+head(df)
+```
+
+Reexamine if there is any empty data left.
+
+```{r}
+colSums(df == 0, )
+```
+
+Conclusion : **There is no empty data left because all considered variables have shown 0 value of NULL data.**
+
+## 2.3. Check Unary data
+
+In this phase, the data must be checked whether it has similar feature or not (unary data).
+
+```{r}
+apply(df, 2, max) - apply(df, 2, min)
+```
+
+Conclusion : **Since there is no 0 value shown in the calculation, it means the unary value is not presence within the data.**
+
+
+# 3. Exploratory Data Analysis (EDA)
+
+## 3.1. Descriptive Statistics
+
+### Summary
+
+```{r}
+summary(df)
+```
+
+Based on the summary above, the insights we can possibly draw are:
+
+1. **35%** of the people are diagnosed with diabetes.
+2. **75%** of the people falls into "overweight" or "obesity" category. Since > 25 means overweight and > 30 means obesity.
+
+### Correlation
+
+For correlation, I refer to the original data frame because **the imputed data frame could distort the true correlations between features** since the resolution of the data are increased. Hence the original data frame will better represent the true correlation between target and independent variables.
+
+```{r}
+correlation <- cor(dfcor)
+print(correlation)
+```
+
+
+```{r}
+heatmap.2(correlation,
+          cellnote = round(correlation, 2),
+          notecol = "black",
+          Colv = FALSE,
+          Rowv = FALSE,
+          dendrogram = "none",
+          col = colorRampPalette(c("blue", "white", "red")))
+```
+
+Based on the correlation above, the insights we can possibly draw are:
+
+1. Glucose level has a less significant correlation against Diabetes but **the most correlation compared to other variables against Diabetes**. It means **glucose level is the most influential factor** in determining the possibility of having Diabetes.
+2. All independent variables within the data have **positive** correlation value against Diabetes which means **all of them contribute on incremental value of Diabetes variable.**
+3. We should **remove TekananDarahAtas, KetebalanKulit, Insulin, and FaktorRisiko** variables off the calculation. Since they only have tiny correlations which are insignificant _(below 0.2 correlation value)_ compared to other provided variables. This method should be done to simplify the machine learning process while still sustaining the optimal accuracy.
+
+```{r}
+kurskew <- describe(df)[c("kurtosis", "skew")]
+print(kurskew)
+```
+
+Based on the description of kurtosis and skewness values above, the insights we can possibly draw are:
+
+1. **KetebalanKulit value is not normally distributed** since its kurtosis value = +4.66 exceeds the normal distribution limit (> +2).
+2. **Insulin variable is not normally distributed** since its kurtosis value = +9.64 exceeds the normal distribution limit (> +2) and its skewness value = +2.68 exceeds normal distribution range (-2 to +2).
+3. **FaktorRisiko value is not normally distributed** since its kurtosis value = +5.53 exceeds the normal distribution limit (> +2).
+4. **The rest of the variables are normally distributed** because their kurtosis value do not exceed the limit +2 and their skewness value do not exceed the range of -2 until +2.
+
+## 3.2. Visualisation
+
+The following density plots are provided to show 3 variables that are not normally distributed.
+
+```{r}
+plot(density(df$KetebalanKulit),
+     main = "Skin Density")
+```
+
+```{r}
+plot(density(df$Insulin),
+     main = "Insulin Level")
+```
+
+```{r}
+plot(density(df$FaktorRisiko),
+     main = "Pedigree Function")
+```
+
+```{r}
+plot(df$GlukosaSewaktu, df$BMI,
+     main = "Relationship between Glucose Level and BMI Index",
+     xlab = "Glucose Level",
+     ylab = "BMI Index",
+     pch = 20,
+     col = ifelse(df$Diabetes == 1, "red", "green"))
+legend("topleft", legend = c("Diabetes", "Healthy"),
+       col = c("red", "green"), pch = 20:20, cex = 0.8)
+```
+
+Based on the chart correlation above, the insights we can possibly draw are:
+
+1. People who have **glucose level lower than 75 are healthy** regardless their BMI Index.
+2. People who have **BMI Index under 23 are healthy** regardless their glucose level.
+3. People who have **glucose level lower than 110 and maintain its BMI Index under 28 are healthy.**
+
+
+# 4. Fitting/Model
+## 4.1 Splitting
+
+In this phase, because there are various range of data between features, it is necessary to standardize the data value using **scale function**.
+
+This function centers or scales the columns of a numeric matrix where **0 means the observation value equals the mean of each column**. In this part, Diabetes variable is also excluded for ease accuracy calculation.
+
+```{r}
+dfscale <- as.data.frame(scale(df))
+dfscale$Diabetes <- df$Diabetes
+print(head(dfscale))
+```
+
+Next, the data should be splitted into 2 parts. **80% of them becomes the data for training purpose** and the **20% becomes the data for accuracy testing purpose.**  
+
+```{r}
+split <- sample.split(dfscale$Diabetes, SplitRatio = 0.8)
+train <- dfscale[split == TRUE, ]
+test <- dfscale[split == FALSE, ]
+```
+
+## 4.2 Modeling
+
+In this phase, I will use **Neural Network** approach to create my machine learning model. Neural network is a series of algorithm that endeavors to recognize underlying relationships in a set of our data through a process **that mimics the way the human brain operates.** Since there is no rule of thumb to optimize my this type of machine learning, I am going to create 4 models initially to find out which one has the best accuracy as the following:
+
+### Model 1 with 8 nodes 1 hidden layer
+
+```{r Model 1 with 8 nodes 1 hidden layer}
+model1 <- neuralnet(Diabetes ~ GlukosaSewaktu + TekananDarahAtas + KetebalanKulit + Insulin + BMI + FaktorRisiko + Umur,
+                   train,
+                   hidden = c(8),
+                   linear.output = TRUE,
+                   stepmax = 1000000)
+```
+
+### Model 2 with 8 nodes 2 hidden layer
+
+```{r Model 2 with 8 nodes 2 hidden layer}
+model2 <- neuralnet(Diabetes ~ GlukosaSewaktu + TekananDarahAtas + KetebalanKulit + Insulin + BMI + FaktorRisiko + Umur,
+                   train,
+                   hidden = c(8,
+                              8),
+                   linear.output = TRUE,
+                   stepmax = 1000000)
+```
+
+### Model 3 with 16 nodes 1 hidden layer
+
+```{r Model 3 with 16 nodes 1 hidden layer}
+model3 <- neuralnet(Diabetes ~ GlukosaSewaktu + TekananDarahAtas + KetebalanKulit + Insulin + BMI + FaktorRisiko + Umur,
+                   train,
+                   hidden = c(16),
+                   linear.output = TRUE,
+                   stepmax = 1000000)
+```
+
+### Model 4 with 16 nodes 2 hidden layer
+
+```{r Model 4 with 16 nodes 2 hidden layer}
+model4 <- neuralnet(Diabetes ~ GlukosaSewaktu + TekananDarahAtas + KetebalanKulit + Insulin + BMI + FaktorRisiko + Umur,
+                   train,
+                   hidden = c(16,
+                              16),
+                   linear.output = TRUE,
+                   stepmax = 1000000)
+```
+
+### Model 5 with 6 nodes 1 hidden layer
+
+Based on the first 4 models, increasing nodes and layer only resulting in decreased accuracy, I further approach the model by utilizing simpler nodes from 1 - 7 nodes within the model. I found out that **6 nodes are enough to provide the highest accuracy** among all models.
+
+```{r Model 5 with 6 nodes 1 hidden layer}
+model5 <- neuralnet(Diabetes ~ GlukosaSewaktu + TekananDarahAtas + KetebalanKulit + Insulin + BMI + FaktorRisiko + Umur,
+                   train,
+                   hidden = c(6),
+                   linear.output = TRUE,
+                   stepmax = 1000000)
+```
+
+
+### Removing low-correlation variables to simplify model 5 as Optimized Model
+
+After we found the most accurate model, I proceed to remove 4 variables which are:
+
+* TekananDarahAtas
+* KetebalanKulit
+* Insulin
+* FaktorRisiko
+
+Because all of them have **correlation below 0.2** against Diabetes and it is highly unlikely to contribute as much as other variables while still maintaining the amount of accuracy that it offers.
+
+```{r}
+modelopt <- neuralnet(Diabetes ~ GlukosaSewaktu + BMI + Umur,
+                   train,
+                   hidden = c(6),
+                   linear.output = TRUE,
+                   stepmax = 1000000)
+```
+
+
+# 5. Model Performance
+
+## 5.1 Inferential Statistic approach
+
+### Accuracy testing for Model 1
+
+```{r}
+key <- test$Diabetes
+prediction1 <- as.data.frame(compute(model1, test))
+prediction11 <- ifelse(prediction1$net.result >= 0.5, 1, 0)
+print(head(key))
+print(head(prediction11))
+```
+
+### Accuracy testing for Model 2
+
+```{r}
+key <- test$Diabetes
+prediction2 <- as.data.frame(compute(model2, test))
+prediction22 <- ifelse(prediction2$net.result >= 0.5, 1, 0)
+print(head(key))
+print(head(prediction22))
+```
+
+### Accuracy testing for Model 3
+
+```{r}
+key <- test$Diabetes
+prediction3 <- as.data.frame(compute(model3, test))
+prediction33 <- ifelse(prediction3$net.result >= 0.5, 1, 0)
+print(head(key))
+print(head(prediction33))
+```
+
+### Accuracy testing for Model 4
+
+```{r}
+key <- test$Diabetes
+prediction4 <- as.data.frame(compute(model4, test))
+prediction44 <- ifelse(prediction4$net.result >= 0.5, 1, 0)
+print(head(key))
+print(head(prediction44))
+```
+
+### Accuracy testing for Model 5
+
+```{r}
+key <- test$Diabetes
+prediction5 <- as.data.frame(compute(model5, test))
+prediction55 <- ifelse(prediction5$net.result >= 0.5, 1, 0)
+print(head(key))
+print(head(prediction55))
+```
+
+### Accuracy testing for Optimized Model
+
+```{r}
+key <- test$Diabetes
+prediction6 <- as.data.frame(compute(modelopt, test))
+predictionopt <- ifelse(prediction6$net.result >= 0.5, 1, 0)
+print(head(key))
+print(head(predictionopt))
+```
+
+
+### Accuracy result for Model 1
+
+```{r}
+confusionMatrix(table(key, prediction11))
+```
+
+The accuracy for model 1 is **74%**.
+
+### Accuracy result for Model 2
+
+```{r}
+confusionMatrix(table(key, prediction22))
+```
+
+The accuracy for model 2 is **68%**.
+
+### Accuracy result for Model 3
+
+```{r}
+confusionMatrix(table(key, prediction33))
+```
+
+The accuracy for model 3 is **71%**.
+
+### Accuracy result for Model 4
+
+```{r}
+confusionMatrix(table(key, prediction44))
+```
+
+The accuracy for model 4 is **60%**.
+
+### Accuracy result for Model 5
+
+```{r}
+confusionMatrix(table(key, prediction55))
+```
+
+The accuracy for model 5 is **75%** as the most accurate.
+
+### Accuracy result for Optimized Model
+
+```{r}
+confusionMatrix(table(key, predictionopt))
+```
+
+The accuracy for model 5 is **77%** as the most accurate even after removing the unnecessary variables.
+
+## 5.2 Visualization approach
+
+The following is the visualization for the machine learning model created through Neural Network approach. It utilizes 6 nodes with 1 hidden layer which taken 11575 steps called Optimized Model.
+
+```{r}
+plot(modelopt)
+```
+
+# 6. Prediction/Forecasting
+
+Optimized Model is the chosen model to be used in prediction because it has the highest accuracy. Following is the calculation to predict whether someone is diabetes or not by inputing my own data.
+
+```{r}
+dp <- data.frame(GlukosaSewaktu = 80,
+                 TekananDarahAtas = 80,
+                 KetebalanKulit = 20,
+                 Insulin = 100,
+                 BMI = 23,
+                 FaktorRisiko = 0.1,
+                 Umur = 23,
+                 Diabetes = 0)
+df1 <- rbind(df, dp)
+df2 <- as.data.frame(scale(df1))
+df3 <- df2[nrow(df2), ]
+```
+
+Because the model based on standardized data, **the new data must be scaled first** before the calculation can be operated.
+
+```{r}
+prediction111 <- as.data.frame(compute(modelopt, df3))
+prediction1111 <- ifelse(prediction111$net.result >= 0.5, 1, 0)
+print(prediction1111)
+```
+
+In conclusion, the prediction shows that **I do not have diabetes, since the 0 value means "Healthy".**
+
+
+# 7. Further Prescription Analysis/Recommendation
+
+1. I hope this model can be utilized to assist medical practitioner to identify someone who might have diabetes much sooner by eliminating unnecessary variables that do not affect the accuracy that much and start focusing on those variables which have higher correlation which are **glucose level** as the most important factor, followed by BMI index and age variables in determining the possibility of having Diabetes.
+2. To stay away from diabetes, people should at least maintain **glucose level under 110 and BMI Index under 28** value.
+3. For future research, it will be helpful to ask the medical expert **what other relevant variables** against diabetes which should be added into the calculation to further boost the amount of accuracy as there is still much room to fill by around 20% to achieve more optimal accuracy.
